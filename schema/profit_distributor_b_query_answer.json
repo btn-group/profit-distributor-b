@@ -42,7 +42,7 @@
               "$ref": "#/definitions/SecretContract"
             },
             "per_share_scaled": {
-              "$ref": "#/definitions/Uint128"
+              "type": "string"
             },
             "profit_token": {
               "$ref": "#/definitions/SecretContract"
@@ -74,7 +74,7 @@
           ],
           "properties": {
             "debt": {
-              "$ref": "#/definitions/Uint128"
+              "type": "string"
             },
             "shares": {
               "$ref": "#/definitions/Uint128"

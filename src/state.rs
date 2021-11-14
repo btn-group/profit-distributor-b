@@ -8,7 +8,7 @@ pub struct Config {
     pub profit_token: SecretContract,
     pub total_shares: u128,
     pub viewing_key: String,
-    pub per_share_scaled: u128,
+    pub per_share_scaled: String,
     pub residue: u128,
 }
 
@@ -20,6 +20,6 @@ pub struct SecretContract {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
-    pub debt: u128,
+    pub debt: String,
     pub shares: u128,
 }
