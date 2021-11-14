@@ -20,25 +20,6 @@
           }
         }
       }
-    },
-    {
-      "type": "object",
-      "required": [
-        "deposit_incentivized_token"
-      ],
-      "properties": {
-        "deposit_incentivized_token": {
-          "type": "object",
-          "required": [
-            "status"
-          ],
-          "properties": {
-            "status": {
-              "$ref": "#/definitions/ProfitDistributorBResponseStatus"
-            }
-          }
-        }
-      }
     }
   ],
   "definitions": {
