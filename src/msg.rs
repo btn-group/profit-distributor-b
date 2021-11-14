@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ProfitDistributorBInitMsg {
-    pub buttcoin: SecretContract,
+    pub incentivized_token: SecretContract,
     pub profit_token: SecretContract,
     pub viewing_key: String,
 }
@@ -47,7 +47,7 @@ pub enum ProfitDistributorBQueryAnswer {
         amount: Uint128,
     },
     Config {
-        buttcoin: SecretContract,
+        incentivized_token: SecretContract,
         per_share_scaled: Uint128,
         residue: Uint128,
         profit_token: SecretContract,
@@ -64,7 +64,7 @@ pub enum ProfitDistributorBQueryAnswer {
 #[serde(rename_all = "snake_case")]
 pub enum ProfitDistributorBReceiveMsg {
     AddProfit {},
-    DepositButtcoin {},
+    DepositIncentivizedToken {},
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
@@ -73,7 +73,7 @@ pub enum ProfitDistributorBReceiveAnswer {
     AddProfit {
         status: ProfitDistributorBResponseStatus,
     },
-    DepositButtcoin {
+    DepositIncentivizedToken {
         status: ProfitDistributorBResponseStatus,
     },
 }

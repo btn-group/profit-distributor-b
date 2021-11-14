@@ -20,7 +20,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<InitResponse> {
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config = Config {
-        buttcoin: msg.buttcoin.clone(),
+        incentivized_token: msg.incentivized_token.clone(),
         per_share_scaled: 0,
         profit_token: msg.profit_token.clone(),
         residue: 0,
@@ -35,15 +35,15 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             env.contract_code_hash.clone(),
             None,
             RESPONSE_BLOCK_SIZE,
-            msg.buttcoin.contract_hash.clone(),
-            msg.buttcoin.address.clone(),
+            msg.incentivized_token.contract_hash.clone(),
+            msg.incentivized_token.address.clone(),
         )?,
         snip20::set_viewing_key_msg(
             msg.viewing_key.clone(),
             None,
             RESPONSE_BLOCK_SIZE,
-            msg.buttcoin.contract_hash,
-            msg.buttcoin.address,
+            msg.incentivized_token.contract_hash,
+            msg.incentivized_token.address,
         )?,
         snip20::register_receive_msg(
             env.contract_code_hash.clone(),
@@ -142,14 +142,17 @@ fn add_profit<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn deposit_buttcoin<S: Storage, A: Api, Q: Querier>(
+fn deposit_incentivized_token<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     from: HumanAddr,
     amount: u128,
 ) -> StdResult<HandleResponse> {
     let mut config = TypedStoreMut::<Config, S>::attach(&mut deps.storage).load(CONFIG_KEY)?;
-    authorize(config.buttcoin.address.clone(), env.message.sender.clone())?;
+    authorize(
+        config.incentivized_token.address.clone(),
+        env.message.sender.clone(),
+    )?;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let mut user = TypedStoreMut::<User, S>::attach(&mut deps.storage)
@@ -185,7 +188,7 @@ fn deposit_buttcoin<S: Storage, A: Api, Q: Querier>(
         messages: messages,
         log: vec![],
         data: Some(to_binary(
-            &ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success },
+            &ProfitDistributorBReceiveAnswer::DepositIncentivizedToken { status: Success },
         )?),
     })
 }
@@ -194,7 +197,7 @@ fn config<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<B
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
 
     to_binary(&ProfitDistributorBQueryAnswer::Config {
-        buttcoin: config.buttcoin,
+        incentivized_token: config.incentivized_token,
         per_share_scaled: Uint128(config.per_share_scaled),
         profit_token: config.profit_token,
         residue: Uint128(config.residue),
@@ -214,8 +217,8 @@ fn receive<S: Storage, A: Api, Q: Querier>(
 
     match msg {
         ProfitDistributorBReceiveMsg::AddProfit {} => add_profit(deps, env, amount),
-        ProfitDistributorBReceiveMsg::DepositButtcoin {} => {
-            deposit_buttcoin(deps, env, from, amount)
+        ProfitDistributorBReceiveMsg::DepositIncentivizedToken {} => {
+            deposit_incentivized_token(deps, env, from, amount)
         }
     }
 }
@@ -260,15 +263,15 @@ fn withdraw<S: Storage, A: Api, Q: Querier>(
     config.total_shares -= amount;
     TypedStoreMut::<Config, S>::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
 
-    // Send buttcoin to user
+    // Send incentivized_token to user
     if amount > 0 {
         messages.push(secret_toolkit::snip20::transfer_msg(
             env.message.sender,
             Uint128(amount),
             None,
             RESPONSE_BLOCK_SIZE,
-            config.buttcoin.contract_hash,
-            config.buttcoin.address.clone(),
+            config.incentivized_token.contract_hash,
+            config.incentivized_token.address.clone(),
         )?);
     }
 
@@ -301,17 +304,17 @@ mod tests {
         let env = mock_env(MOCK_ADMIN, &[]);
         let mut deps = mock_dependencies(20, &[]);
         let msg = ProfitDistributorBInitMsg {
-            buttcoin: mock_buttcoin(),
+            incentivized_token: mock_incentivized_token(),
             profit_token: mock_profit_token(),
             viewing_key: mock_viewing_key(),
         };
         (init(&mut deps, env.clone(), msg), deps)
     }
 
-    fn mock_buttcoin() -> SecretContract {
+    fn mock_incentivized_token() -> SecretContract {
         SecretContract {
-            address: HumanAddr::from("buttcoincontractaddress"),
-            contract_hash: "buttcoincontracthash".to_string(),
+            address: HumanAddr::from("incentivized_tokencontractaddress"),
+            contract_hash: "incentivized_tokencontracthash".to_string(),
         }
     }
 
@@ -341,16 +344,16 @@ mod tests {
                     env.contract_code_hash.clone(),
                     None,
                     RESPONSE_BLOCK_SIZE,
-                    mock_buttcoin().contract_hash.clone(),
-                    mock_buttcoin().address.clone(),
+                    mock_incentivized_token().contract_hash.clone(),
+                    mock_incentivized_token().address.clone(),
                 )
                 .unwrap(),
                 snip20::set_viewing_key_msg(
                     mock_viewing_key(),
                     None,
                     RESPONSE_BLOCK_SIZE,
-                    mock_buttcoin().contract_hash,
-                    mock_buttcoin().address,
+                    mock_incentivized_token().contract_hash,
+                    mock_incentivized_token().address,
                 )
                 .unwrap(),
                 snip20::register_receive_msg(
@@ -386,14 +389,14 @@ mod tests {
         // Test that the desired fields are returned.
         match value {
             ProfitDistributorBQueryAnswer::Config {
-                buttcoin,
+                incentivized_token,
                 profit_token,
                 total_shares,
                 viewing_key,
                 per_share_scaled,
                 residue,
             } => {
-                assert_eq!(buttcoin, config.buttcoin);
+                assert_eq!(incentivized_token, config.incentivized_token);
                 assert_eq!(profit_token, config.profit_token);
                 assert_eq!(per_share_scaled, Uint128(config.per_share_scaled));
                 assert_eq!(residue, Uint128(config.residue));
@@ -408,16 +411,16 @@ mod tests {
     fn test_user() {
         let user = HumanAddr::from("user");
         let (_init_result, mut deps) = init_helper();
-        let receive_deposit_buttcoin_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_incentivized_token_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(1),
             from: user.clone(),
             sender: user.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
-            receive_deposit_buttcoin_msg.clone(),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
+            receive_deposit_incentivized_token_msg.clone(),
         )
         .unwrap();
 
@@ -442,7 +445,7 @@ mod tests {
     fn test_handle_receive_add_profit() {
         let (_init_result, mut deps) = init_helper();
         let amount: Uint128 = Uint128(333);
-        let buttcoin_deposit_amount: Uint128 = Uint128(3);
+        let incentivized_token_deposit_amount: Uint128 = Uint128(3);
         let from: HumanAddr = HumanAddr::from("someuser");
 
         // = When received token is not an allowed profit token
@@ -455,7 +458,7 @@ mod tests {
         };
         let handle_response = handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             receive_add_profit_msg.clone(),
         );
         assert_eq!(
@@ -505,16 +508,16 @@ mod tests {
         assert_eq!(config.residue, amount.u128());
 
         // ==== When there are shares
-        let receive_deposit_buttcoin_msg = ProfitDistributorBHandleMsg::Receive {
-            amount: buttcoin_deposit_amount,
+        let receive_deposit_incentivized_token_msg = ProfitDistributorBHandleMsg::Receive {
+            amount: incentivized_token_deposit_amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
-            receive_deposit_buttcoin_msg.clone(),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
+            receive_deposit_incentivized_token_msg.clone(),
         )
         .unwrap();
         // ==== * It calculates the per_share factoring in the new amount and the residue and resets the residue
@@ -529,7 +532,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             config.per_share_scaled,
-            amount.u128() * CALCULATION_SCALE / buttcoin_deposit_amount.u128()
+            amount.u128() * CALCULATION_SCALE / incentivized_token_deposit_amount.u128()
         );
         assert_eq!(config.residue, 0);
         // ==== When adding profit when shares exist and no residue
@@ -544,23 +547,23 @@ mod tests {
             .unwrap();
         assert_eq!(
             config.per_share_scaled,
-            amount.u128() * 2 * CALCULATION_SCALE / buttcoin_deposit_amount.u128()
+            amount.u128() * 2 * CALCULATION_SCALE / incentivized_token_deposit_amount.u128()
         );
         assert_eq!(config.residue, 0);
     }
 
     #[test]
-    fn test_handle_receive_deposit_buttcoin() {
+    fn test_handle_receive_deposit_incentivized_token() {
         let (_init_result, mut deps) = init_helper();
         let amount: Uint128 = Uint128(333);
         let from: HumanAddr = HumanAddr::from("someuser");
-        // = When received token is not Buttcoin
+        // = When received token is not incentivized_token
         // = * It raises an Unauthorized error
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -572,16 +575,16 @@ mod tests {
             StdError::Unauthorized { backtrace: None }
         );
 
-        // = When received token is Buttcoin
+        // = When received token is incentivized_token
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         )
         .unwrap();
@@ -593,16 +596,16 @@ mod tests {
             .load(from.0.as_bytes())
             .unwrap();
         assert_eq!(user.shares, amount.u128());
-        // === When more Buttcoin is added by the user
+        // === When more incentivized_token is added by the user
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         )
         .unwrap();
@@ -626,16 +629,16 @@ mod tests {
             receive_add_profit_msg.clone(),
         )
         .unwrap();
-        // ==== When more Buttcoin is added by the user
+        // ==== When more incentivized_token is added by the user
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         );
         // ==== * It add to user shares and total shares tokens for user and sends reward to user
@@ -656,8 +659,10 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
-                .unwrap()
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
+                status: Success
+            })
+            .unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -671,16 +676,16 @@ mod tests {
             user.debt,
             user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE
         );
-        // ===== When more Buttcoin is added by the user
+        // ===== When more incentivized_token is added by the user
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         );
         // ===== * It add to user shares and total shares (But does not send any reward tokens to user)
@@ -690,8 +695,10 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
-                .unwrap()
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
+                status: Success
+            })
+            .unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -705,18 +712,18 @@ mod tests {
             user.debt,
             user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE
         );
-        // ====== When Buttcoin is added by anothe user
+        // ====== When incentivized_token is added by anothe user
         let from: HumanAddr = HumanAddr::from("user-two");
         let amount_two: Uint128 = Uint128(65404);
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount_two,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         );
         // ====== * It add to user shares, total shares and does not send any reward tokens to user
@@ -726,8 +733,10 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
-                .unwrap()
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
+                status: Success
+            })
+            .unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -744,29 +753,29 @@ mod tests {
         let amount: Uint128 = Uint128(333);
         let from: HumanAddr = HumanAddr::from("someuser");
 
-        // == When Buttcoin is deposited
+        // == When incentivized_token is deposited
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         )
         .unwrap();
-        // ==== When more Buttcoin is added by the user
+        // ==== When more incentivized_token is added by the user
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         )
         .unwrap();
@@ -783,18 +792,18 @@ mod tests {
             receive_add_profit_msg.clone(),
         )
         .unwrap();
-        // ====== When Buttcoin is added by another user
+        // ====== When incentivized_token is added by another user
         let from_two: HumanAddr = HumanAddr::from("user-two");
         let amount_two: Uint128 = Uint128(65404);
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         )
         .unwrap();
@@ -810,7 +819,7 @@ mod tests {
             .unwrap();
         let user_shares_before_transaction: u128 = user.shares;
         let handle_response = handle(&mut deps, env, withdraw_msg.clone());
-        // ======= * It updates the user shares, total shares and sends the equivalent amount of Buttcoin to withdrawer
+        // ======= * It updates the user shares, total shares and sends the equivalent amount of incentivized_token to withdrawer
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(
             handle_response_unwrapped.messages,
@@ -819,8 +828,8 @@ mod tests {
                 amount_two,
                 None,
                 RESPONSE_BLOCK_SIZE,
-                mock_buttcoin().contract_hash,
-                mock_buttcoin().address.clone(),
+                mock_incentivized_token().contract_hash,
+                mock_incentivized_token().address.clone(),
             )
             .unwrap()]
         );
@@ -853,7 +862,7 @@ mod tests {
             .unwrap();
         let user_shares_before_transaction: u128 = user.shares;
         let handle_response = handle(&mut deps, env, withdraw_msg.clone());
-        // ======= * It updates the user shares, total shares, sends the equivalent amount of Buttcoin to withdrawer and sends reward
+        // ======= * It updates the user shares, total shares, sends the equivalent amount of incentivized_token to withdrawer and sends reward
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(
             handle_response_unwrapped.messages,
@@ -872,8 +881,8 @@ mod tests {
                     amount,
                     None,
                     RESPONSE_BLOCK_SIZE,
-                    mock_buttcoin().contract_hash,
-                    mock_buttcoin().address.clone(),
+                    mock_incentivized_token().contract_hash,
+                    mock_incentivized_token().address.clone(),
                 )
                 .unwrap()
             ]
@@ -904,7 +913,7 @@ mod tests {
         };
         let env = mock_env(from.to_string(), &[]);
         let handle_response = handle(&mut deps, env, withdraw_msg.clone());
-        // ======= * It updates the user shares, total shares and sends the equivalent amount of Buttcoin to withdrawer (No rewards to send)
+        // ======= * It updates the user shares, total shares and sends the equivalent amount of incentivized_token to withdrawer (No rewards to send)
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(
             handle_response_unwrapped.messages,
@@ -913,8 +922,8 @@ mod tests {
                 Uint128(user.shares),
                 None,
                 RESPONSE_BLOCK_SIZE,
-                mock_buttcoin().contract_hash,
-                mock_buttcoin().address.clone(),
+                mock_incentivized_token().contract_hash,
+                mock_incentivized_token().address.clone(),
             )
             .unwrap()]
         );
@@ -959,18 +968,18 @@ mod tests {
             receive_add_profit_msg.clone(),
         )
         .unwrap();
-        // ======== When Buttcoin is added by a user
+        // ======== When incentivized_token is added by a user
         let from_two: HumanAddr = HumanAddr::from("user-two");
         let amount_two: Uint128 = Uint128(123);
         let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
-            mock_env(mock_buttcoin().address.to_string(), &[]),
+            mock_env(mock_incentivized_token().address.to_string(), &[]),
             msg.clone(),
         );
         // ======= * It updates the user shares, total shares, sends the equivalent amount of pool shares to depositer and sends rewards
@@ -991,8 +1000,10 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
-                .unwrap()
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
+                status: Success
+            })
+            .unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -1011,7 +1022,7 @@ mod tests {
         };
         let env = mock_env(from_two.to_string(), &[]);
         let handle_response = handle(&mut deps, env, withdraw_msg.clone());
-        // ======= * It updates the user shares, total shares, sends Buttcoin and profit token to withdrawer
+        // ======= * It updates the user shares, total shares, sends incentivized_token and profit token to withdrawer
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(
             handle_response_unwrapped.messages,
@@ -1020,8 +1031,8 @@ mod tests {
                 amount_two,
                 None,
                 RESPONSE_BLOCK_SIZE,
-                mock_buttcoin().contract_hash,
-                mock_buttcoin().address.clone(),
+                mock_incentivized_token().contract_hash,
+                mock_incentivized_token().address.clone(),
             )
             .unwrap()]
         );

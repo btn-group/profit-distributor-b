@@ -30,7 +30,7 @@
         "config": {
           "type": "object",
           "required": [
-            "buttcoin",
+            "incentivized_token",
             "per_share_scaled",
             "profit_token",
             "residue",
@@ -38,7 +38,7 @@
             "viewing_key"
           ],
           "properties": {
-            "buttcoin": {
+            "incentivized_token": {
               "$ref": "#/definitions/SecretContract"
             },
             "per_share_scaled": {

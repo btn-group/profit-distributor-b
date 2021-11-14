@@ -3,12 +3,12 @@
   "title": "ProfitDistributorBInitMsg",
   "type": "object",
   "required": [
-    "buttcoin",
+    "incentivized_token",
     "profit_token",
     "viewing_key"
   ],
   "properties": {
-    "buttcoin": {
+    "incentivized_token": {
       "$ref": "#/definitions/SecretContract"
     },
     "profit_token": {
