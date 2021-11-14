@@ -48,14 +48,14 @@ pub enum ProfitDistributorBQueryAnswer {
     },
     Config {
         incentivized_token: SecretContract,
-        per_share_scaled: Uint128,
+        per_share_scaled: String,
         residue: Uint128,
         profit_token: SecretContract,
         total_shares: Uint128,
         viewing_key: String,
     },
     User {
-        debt: Uint128,
+        debt: String,
         shares: Uint128,
     },
 }

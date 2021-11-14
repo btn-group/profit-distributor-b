@@ -9,6 +9,7 @@ use cosmwasm_std::{
     from_binary, to_binary, Api, Binary, CosmosMsg, Env, Extern, HandleResponse, HumanAddr,
     InitResponse, Querier, StdError, StdResult, Storage, Uint128,
 };
+use primitive_types::U256;
 use secret_toolkit::snip20;
 use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 
@@ -20,7 +21,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config = Config {
         incentivized_token: msg.incentivized_token.clone(),
-        per_share_scaled: 0,
+        per_share_scaled: 0.to_string(),
         profit_token: msg.profit_token.clone(),
         residue: 0,
         total_shares: 0,
@@ -99,7 +100,7 @@ fn query_user<S: Storage, A: Api, Q: Querier>(
     let user = TypedStore::<User, S>::attach(&deps.storage).load(user_address.0.as_bytes())?;
 
     to_binary(&ProfitDistributorBQueryAnswer::User {
-        debt: Uint128(user.debt),
+        debt: user.debt,
         shares: Uint128(user.shares),
     })
 }
@@ -110,10 +111,12 @@ fn query_claimable_profit<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     let user = TypedStore::<User, S>::attach(&deps.storage).load(user_address.0.as_bytes())?;
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
-    let amount = user.shares * config.per_share_scaled / CALCULATION_SCALE - user.debt;
-
+    let amount: U256 = (U256::from(user.shares)
+        * U256::from_dec_str(&config.per_share_scaled).unwrap()
+        / U256::from(CALCULATION_SCALE))
+        - U256::from_dec_str(&user.debt).unwrap();
     to_binary(&ProfitDistributorBQueryAnswer::ClaimableProfit {
-        amount: Uint128(amount),
+        amount: Uint128(amount.as_u128()),
     })
 }
 
@@ -130,17 +133,27 @@ fn deposit<S: Storage, A: Api, Q: Querier>(
         if config.total_shares == 0 {
             config.residue += amount;
         } else {
-            config.per_share_scaled += amount * CALCULATION_SCALE / config.total_shares;
+            config.per_share_scaled = U256::to_string(
+                &(U256::from_dec_str(&config.per_share_scaled).unwrap()
+                    + U256::from(amount) * U256::from(CALCULATION_SCALE)
+                        / U256::from(config.total_shares)),
+            )
         };
         TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
     } else if env.message.sender == config.incentivized_token.address {
         let mut user = TypedStoreMut::<User, S>::attach(&mut deps.storage)
             .load(from.0.as_bytes())
-            .unwrap_or(User { debt: 0, shares: 0 });
+            .unwrap_or(User {
+                debt: 0.to_string(),
+                shares: 0,
+            });
         let profit_to_send_to_user: u128 = if config.residue > 0 {
             config.residue
         } else {
-            user.shares * config.per_share_scaled / CALCULATION_SCALE - user.debt
+            (U256::from(user.shares) * U256::from_dec_str(&config.per_share_scaled).unwrap()
+                / U256::from(CALCULATION_SCALE)
+                - U256::from_dec_str(&user.debt).unwrap())
+            .as_u128()
         };
         config.residue = 0;
         if profit_to_send_to_user > 0 {
@@ -156,7 +169,10 @@ fn deposit<S: Storage, A: Api, Q: Querier>(
 
         // Update user shares
         user.shares += amount;
-        user.debt = user.shares * config.per_share_scaled / CALCULATION_SCALE;
+        user.debt = U256::to_string(
+            &(U256::from(user.shares) * U256::from_dec_str(&config.per_share_scaled).unwrap()
+                / U256::from(CALCULATION_SCALE)),
+        );
         TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
 
         // Update config shares
@@ -178,7 +194,7 @@ fn config<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<B
 
     to_binary(&ProfitDistributorBQueryAnswer::Config {
         incentivized_token: config.incentivized_token,
-        per_share_scaled: Uint128(config.per_share_scaled),
+        per_share_scaled: config.per_share_scaled,
         profit_token: config.profit_token,
         residue: Uint128(config.residue),
         total_shares: Uint128(config.total_shares),
@@ -218,8 +234,11 @@ fn withdraw<S: Storage, A: Api, Q: Querier>(
     }
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    let profit_to_send_to_user: u128 =
-        user.shares * config.per_share_scaled / CALCULATION_SCALE - user.debt;
+    let profit_to_send_to_user: u128 = (U256::from(user.shares)
+        * U256::from_dec_str(&config.per_share_scaled).unwrap()
+        / U256::from(CALCULATION_SCALE)
+        - U256::from_dec_str(&user.debt).unwrap())
+    .as_u128();
     if profit_to_send_to_user > 0 {
         messages.push(secret_toolkit::snip20::transfer_msg(
             env.message.sender.clone(),
@@ -232,7 +251,10 @@ fn withdraw<S: Storage, A: Api, Q: Querier>(
     }
     // Update user shares
     user.shares -= amount;
-    user.debt = user.shares * config.per_share_scaled / CALCULATION_SCALE;
+    user.debt = U256::to_string(
+        &(U256::from(user.shares) * U256::from_dec_str(&config.per_share_scaled).unwrap()
+            / U256::from(CALCULATION_SCALE)),
+    );
     TypedStoreMut::<User, S>::attach(&mut deps.storage)
         .store(env.message.sender.0.as_bytes(), &user)?;
 
@@ -375,7 +397,7 @@ mod tests {
             } => {
                 assert_eq!(incentivized_token, config.incentivized_token);
                 assert_eq!(profit_token, config.profit_token);
-                assert_eq!(per_share_scaled, Uint128(config.per_share_scaled));
+                assert_eq!(per_share_scaled, config.per_share_scaled);
                 assert_eq!(residue, Uint128(config.residue));
                 assert_eq!(total_shares, Uint128(config.total_shares));
                 assert_eq!(viewing_key, config.viewing_key);
@@ -409,7 +431,7 @@ mod tests {
         let value: ProfitDistributorBQueryAnswer = from_binary(&res).unwrap();
         match value {
             ProfitDistributorBQueryAnswer::User { debt, shares } => {
-                assert_eq!(debt, Uint128(0));
+                assert_eq!(debt, (0).to_string());
                 assert_eq!(shares, Uint128(1));
             }
             _ => panic!("at the taco bell"),
@@ -435,7 +457,7 @@ mod tests {
         };
         let handle_response = handle(
             &mut deps,
-            mock_env(mock_incentivized_token().address.to_string(), &[]),
+            mock_env("axios", &[]),
             receive_deposit_msg.clone(),
         );
         assert_eq!(
@@ -461,7 +483,7 @@ mod tests {
         let config: Config = TypedStoreMut::attach(&mut deps.storage)
             .load(CONFIG_KEY)
             .unwrap();
-        assert_eq!(config.per_share_scaled, 0);
+        assert_eq!(config.per_share_scaled, 0.to_string());
         assert_eq!(config.residue, 0);
         // == With an amount greater than zero
         let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
@@ -481,7 +503,7 @@ mod tests {
         let config: Config = TypedStoreMut::attach(&mut deps.storage)
             .load(CONFIG_KEY)
             .unwrap();
-        assert_eq!(config.per_share_scaled, 0);
+        assert_eq!(config.per_share_scaled, 0.to_string());
         assert_eq!(config.residue, amount.u128());
 
         // ==== When there are shares
@@ -509,7 +531,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             config.per_share_scaled,
-            amount.u128() * CALCULATION_SCALE / incentivized_token_deposit_amount.u128()
+            (amount.u128() * CALCULATION_SCALE / incentivized_token_deposit_amount.u128())
+                .to_string(),
         );
         assert_eq!(config.residue, 0);
         // ==== When adding profit when shares exist and no residue
@@ -524,7 +547,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             config.per_share_scaled,
-            amount.u128() * 2 * CALCULATION_SCALE / incentivized_token_deposit_amount.u128()
+            (amount.u128() * 2 * CALCULATION_SCALE / incentivized_token_deposit_amount.u128())
+                .to_string()
         );
         assert_eq!(config.residue, 0);
     }
@@ -542,11 +566,7 @@ mod tests {
             sender: from.clone(),
             msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
-        let handle_response = handle(
-            &mut deps,
-            mock_env(mock_profit_token().address.to_string(), &[]),
-            msg.clone(),
-        );
+        let handle_response = handle(&mut deps, mock_env("Got milk?", &[]), msg.clone());
         assert_eq!(
             handle_response.unwrap_err(),
             StdError::Unauthorized { backtrace: None }
@@ -648,7 +668,8 @@ mod tests {
         // ==== * It sets the correct debt
         assert_eq!(
             user.debt,
-            user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE
+            (user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE)
+                .to_string()
         );
         // ===== When more incentivized_token is added by the user
         let msg = ProfitDistributorBHandleMsg::Receive {
@@ -681,7 +702,8 @@ mod tests {
         // ===== * It sets the correct debt
         assert_eq!(
             user.debt,
-            user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE
+            (user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE)
+                .to_string()
         );
         // ====== When incentivized_token is added by anothe user
         let from: HumanAddr = HumanAddr::from("user-two");
