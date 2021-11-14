@@ -62,15 +62,15 @@ pub enum ProfitDistributorBQueryAnswer {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorBReceiveMsg {
-    AddProfit {},
+pub enum ReceiveMsg {
+    Deposit {},
     DepositIncentivizedToken {},
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorBReceiveAnswer {
-    AddProfit {
+pub enum ReceiveAnswer {
+    Deposit {
         status: ProfitDistributorBResponseStatus,
     },
     DepositIncentivizedToken {
