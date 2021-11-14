@@ -1,4 +1,3 @@
-use crate::authorize::authorize;
 use crate::constants::{CALCULATION_SCALE, CONFIG_KEY, RESPONSE_BLOCK_SIZE};
 use crate::msg::{
     ProfitDistributorBHandleAnswer, ProfitDistributorBHandleMsg, ProfitDistributorBInitMsg,
@@ -121,73 +120,56 @@ fn query_claimable_profit<S: Storage, A: Api, Q: Querier>(
 fn deposit<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    amount: u128,
-) -> StdResult<HandleResponse> {
-    let mut config: Config = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
-    authorize(config.profit_token.address.clone(), env.message.sender)?;
-
-    if config.total_shares == 0 {
-        config.residue += amount;
-    } else {
-        config.per_share_scaled += amount * CALCULATION_SCALE / config.total_shares;
-    };
-    TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
-
-    Ok(HandleResponse {
-        messages: vec![],
-        log: vec![],
-        data: Some(to_binary(&ReceiveAnswer::Deposit { status: Success })?),
-    })
-}
-
-fn deposit_incentivized_token<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
-    env: Env,
     from: HumanAddr,
     amount: u128,
 ) -> StdResult<HandleResponse> {
-    let mut config = TypedStoreMut::<Config, S>::attach(&mut deps.storage).load(CONFIG_KEY)?;
-    authorize(
-        config.incentivized_token.address.clone(),
-        env.message.sender.clone(),
-    )?;
-
+    let mut config: Config = TypedStoreMut::attach(&mut deps.storage).load(CONFIG_KEY)?;
     let mut messages: Vec<CosmosMsg> = vec![];
-    let mut user = TypedStoreMut::<User, S>::attach(&mut deps.storage)
-        .load(from.0.as_bytes())
-        .unwrap_or(User { debt: 0, shares: 0 });
-    let profit_to_send_to_user: u128 = if config.residue > 0 {
-        config.residue
+
+    if env.message.sender == config.profit_token.address {
+        if config.total_shares == 0 {
+            config.residue += amount;
+        } else {
+            config.per_share_scaled += amount * CALCULATION_SCALE / config.total_shares;
+        };
+        TypedStoreMut::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
+    } else if env.message.sender == config.incentivized_token.address {
+        let mut user = TypedStoreMut::<User, S>::attach(&mut deps.storage)
+            .load(from.0.as_bytes())
+            .unwrap_or(User { debt: 0, shares: 0 });
+        let profit_to_send_to_user: u128 = if config.residue > 0 {
+            config.residue
+        } else {
+            user.shares * config.per_share_scaled / CALCULATION_SCALE - user.debt
+        };
+        config.residue = 0;
+        if profit_to_send_to_user > 0 {
+            messages.push(secret_toolkit::snip20::transfer_msg(
+                from.clone(),
+                Uint128(profit_to_send_to_user),
+                None,
+                RESPONSE_BLOCK_SIZE,
+                config.profit_token.contract_hash.clone(),
+                config.profit_token.address.clone(),
+            )?);
+        }
+
+        // Update user shares
+        user.shares += amount;
+        user.debt = user.shares * config.per_share_scaled / CALCULATION_SCALE;
+        TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
+
+        // Update config shares
+        config.total_shares += amount;
+        TypedStoreMut::<Config, S>::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
     } else {
-        user.shares * config.per_share_scaled / CALCULATION_SCALE - user.debt
-    };
-    config.residue = 0;
-    if profit_to_send_to_user > 0 {
-        messages.push(secret_toolkit::snip20::transfer_msg(
-            from.clone(),
-            Uint128(profit_to_send_to_user),
-            None,
-            RESPONSE_BLOCK_SIZE,
-            config.profit_token.contract_hash.clone(),
-            config.profit_token.address.clone(),
-        )?);
+        return Err(StdError::Unauthorized { backtrace: None });
     }
 
-    // Update user shares
-    user.shares += amount;
-    user.debt = user.shares * config.per_share_scaled / CALCULATION_SCALE;
-    TypedStoreMut::<User, S>::attach(&mut deps.storage).store(from.0.as_bytes(), &user)?;
-
-    // Update config shares
-    config.total_shares += amount;
-    TypedStoreMut::<Config, S>::attach(&mut deps.storage).store(CONFIG_KEY, &config)?;
-
     Ok(HandleResponse {
-        messages: messages,
+        messages,
         log: vec![],
-        data: Some(to_binary(&ReceiveAnswer::DepositIncentivizedToken {
-            status: Success,
-        })?),
+        data: Some(to_binary(&ReceiveAnswer::Deposit { status: Success })?),
     })
 }
 
@@ -214,10 +196,7 @@ fn receive<S: Storage, A: Api, Q: Querier>(
     let msg: ReceiveMsg = from_binary(&msg)?;
 
     match msg {
-        ReceiveMsg::Deposit {} => deposit(deps, env, amount),
-        ReceiveMsg::DepositIncentivizedToken {} => {
-            deposit_incentivized_token(deps, env, from, amount)
-        }
+        ReceiveMsg::Deposit {} => deposit(deps, env, from, amount),
     }
 }
 
@@ -413,7 +392,7 @@ mod tests {
             amount: Uint128(1),
             from: user.clone(),
             sender: user.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -510,7 +489,7 @@ mod tests {
             amount: incentivized_token_deposit_amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -561,7 +540,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -578,7 +557,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -599,7 +578,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -632,7 +611,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -657,7 +636,7 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
+            to_binary(&ReceiveAnswer::Deposit { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -676,7 +655,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -690,7 +669,7 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
+            to_binary(&ReceiveAnswer::Deposit { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -711,7 +690,7 @@ mod tests {
             amount: amount_two,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -725,7 +704,7 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
+            to_binary(&ReceiveAnswer::Deposit { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -747,7 +726,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -760,7 +739,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -788,7 +767,7 @@ mod tests {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -964,7 +943,7 @@ mod tests {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -989,7 +968,7 @@ mod tests {
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
+            to_binary(&ReceiveAnswer::Deposit { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
