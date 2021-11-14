@@ -1,7 +1,7 @@
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 use cw_profit_distributor_b::msg::{
     ProfitDistributorBHandleMsg, ProfitDistributorBInitMsg, ProfitDistributorBQueryAnswer,
-    ProfitDistributorBQueryMsg, ProfitDistributorBReceiveMsg,
+    ProfitDistributorBQueryMsg, ReceiveAnswer, ReceiveMsg,
 };
 use std::env::current_dir;
 use std::fs::create_dir_all;
@@ -16,5 +16,6 @@ fn main() {
     export_schema(&schema_for!(ProfitDistributorBInitMsg), &out_dir);
     export_schema(&schema_for!(ProfitDistributorBQueryAnswer), &out_dir);
     export_schema(&schema_for!(ProfitDistributorBQueryMsg), &out_dir);
-    export_schema(&schema_for!(ProfitDistributorBReceiveMsg), &out_dir);
+    export_schema(&schema_for!(ReceiveAnswer), &out_dir);
+    export_schema(&schema_for!(ReceiveMsg), &out_dir);
 }

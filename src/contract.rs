@@ -2,8 +2,8 @@ use crate::authorize::authorize;
 use crate::constants::{CALCULATION_SCALE, CONFIG_KEY, RESPONSE_BLOCK_SIZE};
 use crate::msg::{
     ProfitDistributorBHandleAnswer, ProfitDistributorBHandleMsg, ProfitDistributorBInitMsg,
-    ProfitDistributorBQueryAnswer, ProfitDistributorBQueryMsg, ProfitDistributorBReceiveAnswer,
-    ProfitDistributorBReceiveMsg, ProfitDistributorBResponseStatus::Success,
+    ProfitDistributorBQueryAnswer, ProfitDistributorBQueryMsg,
+    ProfitDistributorBResponseStatus::Success, ReceiveAnswer, ReceiveMsg,
 };
 use crate::state::{Config, User};
 use cosmwasm_std::{
@@ -118,7 +118,7 @@ fn query_claimable_profit<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn add_profit<S: Storage, A: Api, Q: Querier>(
+fn deposit<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     amount: u128,
@@ -136,9 +136,7 @@ fn add_profit<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: Some(to_binary(&ProfitDistributorBReceiveAnswer::AddProfit {
-            status: Success,
-        })?),
+        data: Some(to_binary(&ReceiveAnswer::Deposit { status: Success })?),
     })
 }
 
@@ -187,9 +185,9 @@ fn deposit_incentivized_token<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: messages,
         log: vec![],
-        data: Some(to_binary(
-            &ProfitDistributorBReceiveAnswer::DepositIncentivizedToken { status: Success },
-        )?),
+        data: Some(to_binary(&ReceiveAnswer::DepositIncentivizedToken {
+            status: Success,
+        })?),
     })
 }
 
@@ -213,11 +211,11 @@ fn receive<S: Storage, A: Api, Q: Querier>(
     amount: u128,
     msg: Binary,
 ) -> StdResult<HandleResponse> {
-    let msg: ProfitDistributorBReceiveMsg = from_binary(&msg)?;
+    let msg: ReceiveMsg = from_binary(&msg)?;
 
     match msg {
-        ProfitDistributorBReceiveMsg::AddProfit {} => add_profit(deps, env, amount),
-        ProfitDistributorBReceiveMsg::DepositIncentivizedToken {} => {
+        ReceiveMsg::Deposit {} => deposit(deps, env, amount),
+        ReceiveMsg::DepositIncentivizedToken {} => {
             deposit_incentivized_token(deps, env, from, amount)
         }
     }
@@ -287,7 +285,7 @@ fn withdraw<S: Storage, A: Api, Q: Querier>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::msg::ProfitDistributorBReceiveMsg;
+    use crate::msg::ReceiveMsg;
     use crate::state::SecretContract;
     use cosmwasm_std::from_binary;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
@@ -415,7 +413,7 @@ mod tests {
             amount: Uint128(1),
             from: user.clone(),
             sender: user.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -442,7 +440,7 @@ mod tests {
     // === HANDLE TESTS ===
 
     #[test]
-    fn test_handle_receive_add_profit() {
+    fn test_handle_receive_deposit() {
         let (_init_result, mut deps) = init_helper();
         let amount: Uint128 = Uint128(333);
         let incentivized_token_deposit_amount: Uint128 = Uint128(3);
@@ -450,16 +448,16 @@ mod tests {
 
         // = When received token is not an allowed profit token
         // = * It returns an unauthorized error
-        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
             mock_env(mock_incentivized_token().address.to_string(), &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         );
         assert_eq!(
             handle_response.unwrap_err(),
@@ -468,16 +466,16 @@ mod tests {
 
         // = When received token is an allowed profit token
         // == With an amount of zero
-        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(0),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
             mock_env(mock_profit_token().address.to_string(), &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         );
         handle_response.unwrap();
         // == * It does not update the per_share_scales or residue
@@ -487,16 +485,16 @@ mod tests {
         assert_eq!(config.per_share_scaled, 0);
         assert_eq!(config.residue, 0);
         // == With an amount greater than zero
-        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
             mock_env(mock_profit_token().address.to_string(), &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         );
         // === When there are no shares
         // === * It adds to the pool's residue
@@ -512,7 +510,7 @@ mod tests {
             amount: incentivized_token_deposit_amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -524,7 +522,7 @@ mod tests {
         let handle_response = handle(
             &mut deps,
             mock_env(mock_profit_token().address.to_string(), &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         );
         handle_response.unwrap();
         let config: Config = TypedStoreMut::attach(&mut deps.storage)
@@ -539,7 +537,7 @@ mod tests {
         let handle_response = handle(
             &mut deps,
             mock_env(mock_profit_token().address.to_string(), &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         );
         handle_response.unwrap();
         let config: Config = TypedStoreMut::attach(&mut deps.storage)
@@ -563,7 +561,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -580,7 +578,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -601,7 +599,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -617,16 +615,16 @@ mod tests {
             .unwrap();
         assert_eq!(user.shares, 2 * amount.u128());
         // === When profit is added
-        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(amount.u128() * 4),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
             mock_env(mock_profit_token().address, &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         )
         .unwrap();
         // ==== When more incentivized_token is added by the user
@@ -634,7 +632,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -655,14 +653,11 @@ mod tests {
             )
             .unwrap(),]
         );
-        let handle_response_data: ProfitDistributorBReceiveAnswer =
+        let handle_response_data: ReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
-                status: Success
-            })
-            .unwrap()
+            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -681,7 +676,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -691,14 +686,11 @@ mod tests {
         // ===== * It add to user shares and total shares (But does not send any reward tokens to user)
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(handle_response_unwrapped.messages, vec![]);
-        let handle_response_data: ProfitDistributorBReceiveAnswer =
+        let handle_response_data: ReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
-                status: Success
-            })
-            .unwrap()
+            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -719,7 +711,7 @@ mod tests {
             amount: amount_two,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -729,14 +721,11 @@ mod tests {
         // ====== * It add to user shares, total shares and does not send any reward tokens to user
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(handle_response_unwrapped.messages, vec![]);
-        let handle_response_data: ProfitDistributorBReceiveAnswer =
+        let handle_response_data: ReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
-                status: Success
-            })
-            .unwrap()
+            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -758,7 +747,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -771,7 +760,7 @@ mod tests {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -780,16 +769,16 @@ mod tests {
         )
         .unwrap();
         // ==== When profit is added
-        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(amount.u128() * 4),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
             mock_env(mock_profit_token().address, &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         )
         .unwrap();
         // ====== When incentivized_token is added by another user
@@ -799,7 +788,7 @@ mod tests {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -956,16 +945,16 @@ mod tests {
         );
 
         // ======== When profit is added when there are no shares
-        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
+        let receive_deposit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(amount.u128() * 4),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::Deposit {}).unwrap(),
         };
         handle(
             &mut deps,
             mock_env(mock_profit_token().address, &[]),
-            receive_add_profit_msg.clone(),
+            receive_deposit_msg.clone(),
         )
         .unwrap();
         // ======== When incentivized_token is added by a user
@@ -975,7 +964,7 @@ mod tests {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositIncentivizedToken {}).unwrap(),
+            msg: to_binary(&ReceiveMsg::DepositIncentivizedToken {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -996,14 +985,11 @@ mod tests {
             )
             .unwrap(),]
         );
-        let handle_response_data: ProfitDistributorBReceiveAnswer =
+        let handle_response_data: ReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorBReceiveAnswer::DepositIncentivizedToken {
-                status: Success
-            })
-            .unwrap()
+            to_binary(&ReceiveAnswer::DepositIncentivizedToken { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
