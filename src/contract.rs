@@ -1,9 +1,9 @@
 use crate::authorize::authorize;
 use crate::constants::{CALCULATION_SCALE, CONFIG_KEY, RESPONSE_BLOCK_SIZE};
 use crate::msg::{
-    ProfitDistributorHandleAnswer, ProfitDistributorHandleMsg, ProfitDistributorInitMsg,
-    ProfitDistributorQueryAnswer, ProfitDistributorQueryMsg, ProfitDistributorReceiveAnswer,
-    ProfitDistributorReceiveMsg, ProfitDistributorResponseStatus::Success,
+    ProfitDistributorBHandleAnswer, ProfitDistributorBHandleMsg, ProfitDistributorBInitMsg,
+    ProfitDistributorBQueryAnswer, ProfitDistributorBQueryMsg, ProfitDistributorBReceiveAnswer,
+    ProfitDistributorBReceiveMsg, ProfitDistributorBResponseStatus::Success,
 };
 use crate::state::{Config, User};
 use cosmwasm_std::{
@@ -16,7 +16,7 @@ use secret_toolkit::storage::{TypedStore, TypedStoreMut};
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: ProfitDistributorInitMsg,
+    msg: ProfitDistributorBInitMsg,
 ) -> StdResult<InitResponse> {
     let mut config_store = TypedStoreMut::attach(&mut deps.storage);
     let config = Config {
@@ -70,26 +70,26 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 pub fn handle<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: ProfitDistributorHandleMsg,
+    msg: ProfitDistributorBHandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        ProfitDistributorHandleMsg::Receive {
+        ProfitDistributorBHandleMsg::Receive {
             from, amount, msg, ..
         } => receive(deps, env, from, amount.u128(), msg),
-        ProfitDistributorHandleMsg::Withdraw { amount } => withdraw(deps, env, amount),
+        ProfitDistributorBHandleMsg::Withdraw { amount } => withdraw(deps, env, amount),
     }
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    msg: ProfitDistributorQueryMsg,
+    msg: ProfitDistributorBQueryMsg,
 ) -> StdResult<Binary> {
     match msg {
-        ProfitDistributorQueryMsg::Config {} => config(deps),
-        ProfitDistributorQueryMsg::ClaimableProfit { user_address, .. } => {
+        ProfitDistributorBQueryMsg::Config {} => config(deps),
+        ProfitDistributorBQueryMsg::ClaimableProfit { user_address, .. } => {
             query_claimable_profit(deps, &user_address)
         }
-        ProfitDistributorQueryMsg::User { user_address, .. } => query_user(deps, &user_address),
+        ProfitDistributorBQueryMsg::User { user_address, .. } => query_user(deps, &user_address),
     }
 }
 
@@ -99,7 +99,7 @@ fn query_user<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     let user = TypedStore::<User, S>::attach(&deps.storage).load(user_address.0.as_bytes())?;
 
-    to_binary(&ProfitDistributorQueryAnswer::User {
+    to_binary(&ProfitDistributorBQueryAnswer::User {
         debt: Uint128(user.debt),
         shares: Uint128(user.shares),
     })
@@ -113,7 +113,7 @@ fn query_claimable_profit<S: Storage, A: Api, Q: Querier>(
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
     let amount = user.shares * config.per_share_scaled / CALCULATION_SCALE - user.debt;
 
-    to_binary(&ProfitDistributorQueryAnswer::ClaimableProfit {
+    to_binary(&ProfitDistributorBQueryAnswer::ClaimableProfit {
         amount: Uint128(amount),
     })
 }
@@ -136,7 +136,7 @@ fn add_profit<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: vec![],
         log: vec![],
-        data: Some(to_binary(&ProfitDistributorReceiveAnswer::AddProfit {
+        data: Some(to_binary(&ProfitDistributorBReceiveAnswer::AddProfit {
             status: Success,
         })?),
     })
@@ -185,7 +185,7 @@ fn deposit_buttcoin<S: Storage, A: Api, Q: Querier>(
         messages: messages,
         log: vec![],
         data: Some(to_binary(
-            &ProfitDistributorReceiveAnswer::DepositButtcoin { status: Success },
+            &ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success },
         )?),
     })
 }
@@ -193,7 +193,7 @@ fn deposit_buttcoin<S: Storage, A: Api, Q: Querier>(
 fn config<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<Binary> {
     let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY)?;
 
-    to_binary(&ProfitDistributorQueryAnswer::Config {
+    to_binary(&ProfitDistributorBQueryAnswer::Config {
         buttcoin: config.buttcoin,
         per_share_scaled: Uint128(config.per_share_scaled),
         profit_token: config.profit_token,
@@ -210,11 +210,11 @@ fn receive<S: Storage, A: Api, Q: Querier>(
     amount: u128,
     msg: Binary,
 ) -> StdResult<HandleResponse> {
-    let msg: ProfitDistributorReceiveMsg = from_binary(&msg)?;
+    let msg: ProfitDistributorBReceiveMsg = from_binary(&msg)?;
 
     match msg {
-        ProfitDistributorReceiveMsg::AddProfit {} => add_profit(deps, env, amount),
-        ProfitDistributorReceiveMsg::DepositButtcoin {} => {
+        ProfitDistributorBReceiveMsg::AddProfit {} => add_profit(deps, env, amount),
+        ProfitDistributorBReceiveMsg::DepositButtcoin {} => {
             deposit_buttcoin(deps, env, from, amount)
         }
     }
@@ -275,7 +275,7 @@ fn withdraw<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: messages,
         log: vec![],
-        data: Some(to_binary(&ProfitDistributorHandleAnswer::Withdraw {
+        data: Some(to_binary(&ProfitDistributorBHandleAnswer::Withdraw {
             status: Success,
         })?),
     })
@@ -284,7 +284,7 @@ fn withdraw<S: Storage, A: Api, Q: Querier>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::msg::ProfitDistributorReceiveMsg;
+    use crate::msg::ProfitDistributorBReceiveMsg;
     use crate::state::SecretContract;
     use cosmwasm_std::from_binary;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier, MockStorage};
@@ -300,7 +300,7 @@ mod tests {
     ) {
         let env = mock_env(MOCK_ADMIN, &[]);
         let mut deps = mock_dependencies(20, &[]);
-        let msg = ProfitDistributorInitMsg {
+        let msg = ProfitDistributorBInitMsg {
             buttcoin: mock_buttcoin(),
             profit_token: mock_profit_token(),
             viewing_key: mock_viewing_key(),
@@ -380,12 +380,12 @@ mod tests {
         let (_init_result, deps) = init_helper();
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
 
-        let res = query(&deps, ProfitDistributorQueryMsg::Config {}).unwrap();
-        let value: ProfitDistributorQueryAnswer = from_binary(&res).unwrap();
+        let res = query(&deps, ProfitDistributorBQueryMsg::Config {}).unwrap();
+        let value: ProfitDistributorBQueryAnswer = from_binary(&res).unwrap();
         // Test response does not include viewing key.
         // Test that the desired fields are returned.
         match value {
-            ProfitDistributorQueryAnswer::Config {
+            ProfitDistributorBQueryAnswer::Config {
                 buttcoin,
                 profit_token,
                 total_shares,
@@ -408,11 +408,11 @@ mod tests {
     fn test_user() {
         let user = HumanAddr::from("user");
         let (_init_result, mut deps) = init_helper();
-        let receive_deposit_buttcoin_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_deposit_buttcoin_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(1),
             from: user.clone(),
             sender: user.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -423,12 +423,12 @@ mod tests {
 
         let res = query(
             &deps,
-            ProfitDistributorQueryMsg::User { user_address: user },
+            ProfitDistributorBQueryMsg::User { user_address: user },
         )
         .unwrap();
-        let value: ProfitDistributorQueryAnswer = from_binary(&res).unwrap();
+        let value: ProfitDistributorBQueryAnswer = from_binary(&res).unwrap();
         match value {
-            ProfitDistributorQueryAnswer::User { debt, shares } => {
+            ProfitDistributorBQueryAnswer::User { debt, shares } => {
                 assert_eq!(debt, Uint128(0));
                 assert_eq!(shares, Uint128(1));
             }
@@ -447,11 +447,11 @@ mod tests {
 
         // = When received token is not an allowed profit token
         // = * It returns an unauthorized error
-        let receive_add_profit_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -465,11 +465,11 @@ mod tests {
 
         // = When received token is an allowed profit token
         // == With an amount of zero
-        let receive_add_profit_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(0),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -484,11 +484,11 @@ mod tests {
         assert_eq!(config.per_share_scaled, 0);
         assert_eq!(config.residue, 0);
         // == With an amount greater than zero
-        let receive_add_profit_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -505,11 +505,11 @@ mod tests {
         assert_eq!(config.residue, amount.u128());
 
         // ==== When there are shares
-        let receive_deposit_buttcoin_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_deposit_buttcoin_msg = ProfitDistributorBHandleMsg::Receive {
             amount: buttcoin_deposit_amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -556,11 +556,11 @@ mod tests {
         let from: HumanAddr = HumanAddr::from("someuser");
         // = When received token is not Buttcoin
         // = * It raises an Unauthorized error
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -573,11 +573,11 @@ mod tests {
         );
 
         // = When received token is Buttcoin
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -594,11 +594,11 @@ mod tests {
             .unwrap();
         assert_eq!(user.shares, amount.u128());
         // === When more Buttcoin is added by the user
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -614,11 +614,11 @@ mod tests {
             .unwrap();
         assert_eq!(user.shares, 2 * amount.u128());
         // === When profit is added
-        let receive_add_profit_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(amount.u128() * 4),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -627,11 +627,11 @@ mod tests {
         )
         .unwrap();
         // ==== When more Buttcoin is added by the user
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -652,11 +652,11 @@ mod tests {
             )
             .unwrap(),]
         );
-        let handle_response_data: ProfitDistributorReceiveAnswer =
+        let handle_response_data: ProfitDistributorBReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorReceiveAnswer::DepositButtcoin { status: Success })
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
                 .unwrap()
         );
 
@@ -672,11 +672,11 @@ mod tests {
             user.shares * 4 * 333 * CALCULATION_SCALE / (amount.u128() * 2) / CALCULATION_SCALE
         );
         // ===== When more Buttcoin is added by the user
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -686,11 +686,11 @@ mod tests {
         // ===== * It add to user shares and total shares (But does not send any reward tokens to user)
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(handle_response_unwrapped.messages, vec![]);
-        let handle_response_data: ProfitDistributorReceiveAnswer =
+        let handle_response_data: ProfitDistributorBReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorReceiveAnswer::DepositButtcoin { status: Success })
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
                 .unwrap()
         );
 
@@ -708,11 +708,11 @@ mod tests {
         // ====== When Buttcoin is added by anothe user
         let from: HumanAddr = HumanAddr::from("user-two");
         let amount_two: Uint128 = Uint128(65404);
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount_two,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -722,11 +722,11 @@ mod tests {
         // ====== * It add to user shares, total shares and does not send any reward tokens to user
         let handle_response_unwrapped = handle_response.unwrap();
         assert_eq!(handle_response_unwrapped.messages, vec![]);
-        let handle_response_data: ProfitDistributorReceiveAnswer =
+        let handle_response_data: ProfitDistributorBReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorReceiveAnswer::DepositButtcoin { status: Success })
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
                 .unwrap()
         );
 
@@ -745,11 +745,11 @@ mod tests {
         let from: HumanAddr = HumanAddr::from("someuser");
 
         // == When Buttcoin is deposited
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -758,11 +758,11 @@ mod tests {
         )
         .unwrap();
         // ==== When more Buttcoin is added by the user
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount,
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -771,11 +771,11 @@ mod tests {
         )
         .unwrap();
         // ==== When profit is added
-        let receive_add_profit_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(amount.u128() * 4),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -786,11 +786,11 @@ mod tests {
         // ====== When Buttcoin is added by another user
         let from_two: HumanAddr = HumanAddr::from("user-two");
         let amount_two: Uint128 = Uint128(65404);
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -800,7 +800,7 @@ mod tests {
         .unwrap();
 
         // === WITHDRAWING BEGINGS ===
-        let withdraw_msg = ProfitDistributorHandleMsg::Withdraw { amount: amount_two };
+        let withdraw_msg = ProfitDistributorBHandleMsg::Withdraw { amount: amount_two };
         let env = mock_env(from_two.to_string(), &[]);
         // let _handle_response = handle(&mut deps, env, withdraw_msg.clone());
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -824,11 +824,11 @@ mod tests {
             )
             .unwrap()]
         );
-        let handle_response_data: ProfitDistributorHandleAnswer =
+        let handle_response_data: ProfitDistributorBHandleAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorHandleAnswer::Withdraw { status: Success }).unwrap()
+            to_binary(&ProfitDistributorBHandleAnswer::Withdraw { status: Success }).unwrap()
         );
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
         assert_eq!(
@@ -844,7 +844,7 @@ mod tests {
         );
 
         // ======= When user one withdraws
-        let withdraw_msg = ProfitDistributorHandleMsg::Withdraw { amount: amount };
+        let withdraw_msg = ProfitDistributorBHandleMsg::Withdraw { amount: amount };
         let env = mock_env(from.to_string(), &[]);
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
         let total_shares_before_transaction: u128 = config.total_shares;
@@ -878,11 +878,11 @@ mod tests {
                 .unwrap()
             ]
         );
-        let handle_response_data: ProfitDistributorHandleAnswer =
+        let handle_response_data: ProfitDistributorBHandleAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorHandleAnswer::Withdraw { status: Success }).unwrap()
+            to_binary(&ProfitDistributorBHandleAnswer::Withdraw { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -899,7 +899,7 @@ mod tests {
         let user: User = TypedStore::attach(&deps.storage)
             .load(from.0.as_bytes())
             .unwrap();
-        let withdraw_msg = ProfitDistributorHandleMsg::Withdraw {
+        let withdraw_msg = ProfitDistributorBHandleMsg::Withdraw {
             amount: Uint128(user.shares),
         };
         let env = mock_env(from.to_string(), &[]);
@@ -918,11 +918,11 @@ mod tests {
             )
             .unwrap()]
         );
-        let handle_response_data: ProfitDistributorHandleAnswer =
+        let handle_response_data: ProfitDistributorBHandleAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorHandleAnswer::Withdraw { status: Success }).unwrap()
+            to_binary(&ProfitDistributorBHandleAnswer::Withdraw { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();
@@ -932,7 +932,7 @@ mod tests {
             .unwrap();
         assert_eq!(user.shares, 0);
         // ======= When user one tries to withdraw more than their balance
-        let withdraw_msg = ProfitDistributorHandleMsg::Withdraw {
+        let withdraw_msg = ProfitDistributorBHandleMsg::Withdraw {
             amount: Uint128(user.shares + 1),
         };
         let env = mock_env(from.to_string(), &[]);
@@ -947,11 +947,11 @@ mod tests {
         );
 
         // ======== When profit is added when there are no shares
-        let receive_add_profit_msg = ProfitDistributorHandleMsg::Receive {
+        let receive_add_profit_msg = ProfitDistributorBHandleMsg::Receive {
             amount: Uint128(amount.u128() * 4),
             from: from.clone(),
             sender: from.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::AddProfit {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::AddProfit {}).unwrap(),
         };
         handle(
             &mut deps,
@@ -962,11 +962,11 @@ mod tests {
         // ======== When Buttcoin is added by a user
         let from_two: HumanAddr = HumanAddr::from("user-two");
         let amount_two: Uint128 = Uint128(123);
-        let msg = ProfitDistributorHandleMsg::Receive {
+        let msg = ProfitDistributorBHandleMsg::Receive {
             amount: amount_two,
             from: from_two.clone(),
             sender: from_two.clone(),
-            msg: to_binary(&ProfitDistributorReceiveMsg::DepositButtcoin {}).unwrap(),
+            msg: to_binary(&ProfitDistributorBReceiveMsg::DepositButtcoin {}).unwrap(),
         };
         let handle_response = handle(
             &mut deps,
@@ -987,11 +987,11 @@ mod tests {
             )
             .unwrap(),]
         );
-        let handle_response_data: ProfitDistributorReceiveAnswer =
+        let handle_response_data: ProfitDistributorBReceiveAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorReceiveAnswer::DepositButtcoin { status: Success })
+            to_binary(&ProfitDistributorBReceiveAnswer::DepositButtcoin { status: Success })
                 .unwrap()
         );
 
@@ -1006,7 +1006,7 @@ mod tests {
         let user: User = TypedStore::attach(&deps.storage)
             .load(from_two.0.as_bytes())
             .unwrap();
-        let withdraw_msg = ProfitDistributorHandleMsg::Withdraw {
+        let withdraw_msg = ProfitDistributorBHandleMsg::Withdraw {
             amount: Uint128(user.shares),
         };
         let env = mock_env(from_two.to_string(), &[]);
@@ -1025,11 +1025,11 @@ mod tests {
             )
             .unwrap()]
         );
-        let handle_response_data: ProfitDistributorHandleAnswer =
+        let handle_response_data: ProfitDistributorBHandleAnswer =
             from_binary(&handle_response_unwrapped.data.unwrap()).unwrap();
         assert_eq!(
             to_binary(&handle_response_data).unwrap(),
-            to_binary(&ProfitDistributorHandleAnswer::Withdraw { status: Success }).unwrap()
+            to_binary(&ProfitDistributorBHandleAnswer::Withdraw { status: Success }).unwrap()
         );
 
         let config: Config = TypedStore::attach(&deps.storage).load(CONFIG_KEY).unwrap();

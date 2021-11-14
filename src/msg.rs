@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct ProfitDistributorInitMsg {
+pub struct ProfitDistributorBInitMsg {
     pub buttcoin: SecretContract,
     pub profit_token: SecretContract,
     pub viewing_key: String,
@@ -12,7 +12,7 @@ pub struct ProfitDistributorInitMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorHandleMsg {
+pub enum ProfitDistributorBHandleMsg {
     Receive {
         sender: HumanAddr,
         from: HumanAddr,
@@ -26,15 +26,15 @@ pub enum ProfitDistributorHandleMsg {
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorHandleAnswer {
+pub enum ProfitDistributorBHandleAnswer {
     Withdraw {
-        status: ProfitDistributorResponseStatus,
+        status: ProfitDistributorBResponseStatus,
     },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorQueryMsg {
+pub enum ProfitDistributorBQueryMsg {
     Config {},
     ClaimableProfit { user_address: HumanAddr },
     User { user_address: HumanAddr },
@@ -42,7 +42,7 @@ pub enum ProfitDistributorQueryMsg {
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorQueryAnswer {
+pub enum ProfitDistributorBQueryAnswer {
     ClaimableProfit {
         amount: Uint128,
     },
@@ -62,24 +62,24 @@ pub enum ProfitDistributorQueryAnswer {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorReceiveMsg {
+pub enum ProfitDistributorBReceiveMsg {
     AddProfit {},
     DepositButtcoin {},
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorReceiveAnswer {
+pub enum ProfitDistributorBReceiveAnswer {
     AddProfit {
-        status: ProfitDistributorResponseStatus,
+        status: ProfitDistributorBResponseStatus,
     },
     DepositButtcoin {
-        status: ProfitDistributorResponseStatus,
+        status: ProfitDistributorBResponseStatus,
     },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfitDistributorResponseStatus {
+pub enum ProfitDistributorBResponseStatus {
     Success,
 }

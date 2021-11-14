@@ -1,9 +1,9 @@
-# Profit distributor
-btn.group's profit distributor.
+# Profit distributor B
+btn.group's profit distributor to work along side BUTT lode.
 
 ## How it works
-* User deposits Buttcoin into this smart contract.
-* This smart contract receives profits and distributes to users.
+* User deposits incentivized token.
+* This smart contract receives profits and distributes to depositors.
 
 ## The three pillars of blockchain
 The three pillars refers to blockchain itself but we are attempting to follow the ethos as much as possible.

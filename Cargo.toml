@@ -1,5 +1,5 @@
 [package]
-name = "cw-profit-distributor"
+name = "cw-profit-distributor-b"
 version = "0.1.0"
 authors = ["Steven Chang <steven.chang@btn.group>"]
 edition = "2018"
